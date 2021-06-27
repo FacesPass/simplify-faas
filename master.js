@@ -2,12 +2,18 @@ const fs = require('fs')
 const cluster = require('cluster')
 const Koa = require('koa')
 const cpuNums = require('os').cpus().length
+const { get, set } = require('./cache')
 //提供沙箱的机制，避免eval中执行的方法修改全局上下文，但也不是绝对安全的，因为它可以通过原型链拿到主进程中的方法
 //可以使用vm2(npm install vm2)，得到比原生vm更加安全的沙箱运行环境
 // const vm = require('vm')
 const { VM } = require('vm2')
 // new VM().run('this.constructor.constructor("return process")().exit()') //process is not defined
 
+/**
+ * 要实现队函数资源的控制，可以去设置CGroup
+ */
+
+// cluster.schedulingPolicy 用来配置其它的负载均衡算法
 if (cluster.isMaster) {
   //主进程根据cpu核心数量启动对应数量的子进程
   for (let i = 0; i < cpuNums; i++) {
@@ -35,7 +41,7 @@ async function run(path) {
     //那么VM的超时功能就没法生效。解决办法就是：在cluser模块中重写任务分发算法，在Round Robin算法基础上增加计时器。
     //超过计时器时间函数没返回就直接返回超时并结束子进程的生命周期，重新启动子进程
     //要么就放弃使用cluster模块，通过计时器控制子进程实现功能，但要自己实现进程池的管理逻辑
-    return new VM({ timeout: 5000 }).run(fnIIFE)
+    return new VM({ sandbox: { get, set }, timeout: 5000 }).run(fnIIFE)
   } catch (e) {
     if (e.code === 'ENOENT') {
       return 'Not Found Function'
